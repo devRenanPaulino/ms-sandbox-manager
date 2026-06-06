@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, Form
 from app.core.database import get_database
-from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse
+from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse, MessageTemplateRequest
 from app.repositories.mongo_repository import MongoChatRepository
 from datetime import datetime, timezone
 from typing import List
@@ -21,11 +21,11 @@ def get_repository(db = Depends(get_database)) -> MongoChatRepository:
 @router.post("/send", response_model=dict, status_code=201)
 def send_message(payload: MessageCreateRequest, repo: MongoChatRepository = Depends(get_repository)):
   try:
-    id_twilio_final = payload.id_message_twilio
+    id_twilio_final = f"SM_MOCK_{int(datetime.now(timezone.utc).timestamp())}"
 
     if twilio_client:
       try:
-        message_sent = twilio_client.message.create(
+        message_sent = twilio_client.messages.create(
           from_=twilio_number,
           body=payload.text,
           to=f"whatsapp:{payload.tel_client}"
@@ -36,7 +36,7 @@ def send_message(payload: MessageCreateRequest, repo: MongoChatRepository = Depe
         print(f"[Twilio] Erro no disparo (Mantenha a janela de 24h ativa): {twilio_err}")
 
     new_message = MessageChat(
-      id_message_twilio=payload.id_message_twilio,
+      id_message_twilio=id_twilio_final,
       tel_client=payload.tel_client,
       text=payload.text,
       url_midia=payload.url_midia,
@@ -78,7 +78,9 @@ def twilio_webhook(
 
     return ""
   except Exception as e:
-    print("ERRO NO WEBHOOK DA TWILIO:", str(e))
+    print("\nERRO DENTRO DO WEBHOOK")
+    print("O MOTIVO DO ERRO FOI:", str(e))
+    print("-----------------------------------------\n")
     return ""
 
   
@@ -111,4 +113,53 @@ def get_history(tel: str, repo: MongoChatRepository = Depends(get_repository)):
     return story_format
   except Exception as e:
     raise HTTPException(status_code=500, detail=str(e))
+  
+@router.post("/initiate", response_model=dict, status_code=200)
+def initiate_conversation(payload: MessageTemplateRequest, repo: MongoChatRepository = Depends(get_repository)):
+  try:
+    TEMPLATE_SID = "HXb5b62575e6e4ff6129ad7c8efe1f983e"
+    variables_json = f'{{"1":"{payload.param_1}","2":"{payload.param_2}"}}'
+    id_twilio_real = "TEMPLATE_TESTE_ID"
+
+    if twilio_client:
+      try:
+        message_sent = twilio_client.messages.create(
+          from_=twilio_number,
+          to=f"whatsapp:{payload.tel_client}",
+          content_sid=TEMPLATE_SID,    
+          content_variables=variables_json
+        )
+
+        id_twilio_real = message_sent.sid
+        print(f"[Template] Janela aberta com sucesso para {payload.tel_client}! SID: {id_twilio_real}")
+            
+      except Exception as twilio_err:
+        print(f"[Twilio] Erro ao disparar template: {twilio_err}")
+        raise HTTPException(status_code=400, detail=f"Erro na Twilio: {str(twilio_err)}")
+      
+      texto_renderizado = f"Your appointment is coming up on {payload.param_1} at {payload.param_2}"
+
+      new_message = MessageChat(
+        id_message_twilio=id_twilio_real,
+        tel_client=payload.tel_client,
+        text=texto_renderizado,
+        url_midia=None,
+        id_colaborador=payload.id_colaborador,
+        direction="saida",
+        date_time=datetime.now(timezone.utc)
+      )
+
+      id_gen = repo.save_message(new_message)
+
+      return {
+        "status": "Template enviado e janela de conversa aberta!",
+        "id_db": id_gen,
+        "id_twilio": id_twilio_real
+      }
+  except Exception as e:
+    print("ERRO NO POST INITIATE:", str(e))
+    raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
