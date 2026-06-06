@@ -4,7 +4,7 @@ from typing import Optional
 
 # DTO de entrada
 class MessageCreateRequest(BaseModel):
-  id_message_twilio: str = Field(..., description="ID gerado pelo Twilio")
+  id_message_twilio: Optional[str] = None
   tel_client: str = Field(..., description="Telefone com +55 e DDD")
   text: Optional[str] = None
   url_midia: Optional[str] = None
@@ -30,3 +30,10 @@ class MessageResponse(BaseModel):
   id_colaborador: Optional[int] = None
   direction: str
   date_time: datetime
+
+# Novo DTO para a rota de inicialização de conversa por template
+class MessageTemplateRequest(BaseModel):
+    tel_client: str = Field(..., description="Telefone do cliente com +55 e DDD")
+    param_1: str = Field(..., description="Valor para substituir o {{1}} no template")
+    param_2: str = Field(..., description="Valor para substituir o {{2}} no template")
+    id_colaborador: Optional[int] = None
