@@ -26,5 +26,30 @@ class MongoChatRepository(IChatRepository):
     # Filtra por telefone e sort() para ordenar (1 = Mais antigo ao mais novo)
     cursor = self.collection.find({"tel_client": tel}).sort("date_time", 1)
     return list(cursor)
+  
+  def get_distinct_conversations(self) -> list[dict]:
+    """Faz a agregação no Mongo para trazer a última mensagem de cada número."""
+    pipeline = [
+      {"$sort": {"date_time": -1}},
+        {
+          "$group": {
+          "_id": "$tel_client",
+          "text": {"$first": "$text"},
+          "date_time": {"$first": "$date_time"},
+          "direction": {"$first": "$direction"}
+        }
+      },
+      {
+        "$project": {
+          "tel_client": "$_id",
+          "text": 1,
+          "date_time": 1,
+          "direction": 1,
+          "_id": 0
+        }
+      },
+        {"$sort": {"date_time": -1}}
+    ]
+    return list(self.collection.aggregate(pipeline))
 
 

@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, Form
 from app.core.database import get_database
-from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse, MessageTemplateRequest
+from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse, MessageTemplateRequest, ConversationPreviewResponse
 from app.repositories.mongo_repository import MongoChatRepository
 from datetime import datetime, timezone
 from typing import List
@@ -160,6 +160,10 @@ def initiate_conversation(payload: MessageTemplateRequest, repo: MongoChatReposi
     print("ERRO NO POST INITIATE:", str(e))
     raise HTTPException(status_code=500, detail=str(e))
 
-
-
-
+@router.get("/conversations", response_model=List[ConversationPreviewResponse])
+def get_active_conversations(repo: MongoChatRepository = Depends(get_repository)):
+    try:
+        conversas = repo.get_distinct_conversations()
+        return conversas
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar conversas ativas: {str(e)}")

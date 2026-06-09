@@ -37,3 +37,9 @@ class MessageTemplateRequest(BaseModel):
     param_1: str = Field(..., description="Valor para substituir o {{1}} no template")
     param_2: str = Field(..., description="Valor para substituir o {{2}} no template")
     id_colaborador: Optional[int] = None
+
+class ConversationPreviewResponse(BaseModel):
+  tel_client: str
+  text: str
+  date_time: datetime
+  direction: str
