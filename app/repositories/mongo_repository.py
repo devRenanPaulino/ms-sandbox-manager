@@ -14,10 +14,15 @@ class MongoChatRepository(IChatRepository):
     # Retorna o ID gerado pelo MongoDB convertido em String
     return str(resultado.inserted_id)
   
-  def search_history_for_tel(self, tel: str) -> List[dict]:
+  def search_history_for_tel(self, tel: str, skip: int = 0, limit: int = 20) -> List[dict]:
+    """Busca o histórico paginado de um telefone, trazendo as mais recentes primeiro."""
     # Filtra por telefone e sort() para ordenar (1 = Mais antigo ao mais novo)
-    cursor = self.collection.find({"tel_client": tel}).sort("date_time", 1)
-    return list(cursor)
+    return list(
+      self.collection.find({"tel_client": tel})
+      .sort("date_time", -1)  # Traz as mais recentes primeiro
+      .skip(skip) # Pula as mensagens das páginas anteriores
+      .limit(limit) # Limita o tamanho do lote (ex: 20 por vez)
+    )
   
   def get_distinct_conversations(self) -> list[dict]:
     """Faz a agregação no Mongo para trazer a última mensagem de cada número."""
