@@ -70,7 +70,8 @@ def twilio_webhook(
       url_midia=None,
       id_colaborador=None,
       direction="entrada",
-      date_time=datetime.now(timezone.utc)
+      date_time=datetime.now(timezone.utc),
+      read=False
     )
 
     id_gen = repo.save_message(incoming_message)
@@ -167,3 +168,14 @@ def get_active_conversations(repo: MongoChatRepository = Depends(get_repository)
         return conversas
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao buscar conversas ativas: {str(e)}")
+    
+@router.put("/read/{tel}", response_model=dict, status_code=200)
+def mark_as_read(tel: str, repo: MongoChatRepository = Depends(get_repository)):
+  try:
+    modified_count = repo.mark_messages_as_read(tel)
+    return {
+      "status": "Mensagens marcadas como lidas com sucesso",
+      "messagens_updated": modified_count
+    }
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Erro ao atualizar status de leitura: {str(e)}")
