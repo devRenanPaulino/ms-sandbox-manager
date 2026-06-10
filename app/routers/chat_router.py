@@ -86,9 +86,10 @@ def twilio_webhook(
 
   
 @router.get("/history/{tel}", response_model=List[MessageResponse])
-def get_history(tel: str, repo: MongoChatRepository = Depends(get_repository)):
+def get_history(tel: str, skip: int = 0, limit: int = 20, repo: MongoChatRepository = Depends(get_repository)):
   try:
-    doc_db = repo.search_history_for_tel(tel)
+    # Passa os parâmetros de paginação para o repositório
+    doc_db = repo.search_history_for_tel(tel, skip=skip, limit=limit)
 
     story_format = []
     for doc in doc_db:
@@ -111,6 +112,9 @@ def get_history(tel: str, repo: MongoChatRepository = Depends(get_repository)):
       )
       story_format.append(filter_message)
 
+    # Como o Mongo buscou do mais recente para o mais antigo por causa do sort decrescente,
+    # nós invertemos a lista final aqui para que o lote de 20 apareça na ordem correta do chat (de cima para baixo)
+    story_format.reverse()
     return story_format
   except Exception as e:
     raise HTTPException(status_code=500, detail=str(e))
