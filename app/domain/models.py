@@ -19,6 +19,7 @@ class MessageChat(BaseModel):
   id_colaborador: Optional[int] = None
   direction: str # entrada ou saída
   date_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+  read: bool = Field(default=True) # O default é true para segurança de mensagens antigas
 
 # DTO de retorno
 class MessageResponse(BaseModel):
@@ -40,6 +41,7 @@ class MessageTemplateRequest(BaseModel):
 
 class ConversationPreviewResponse(BaseModel):
   tel_client: str
-  text: str
+  text: Optional[str] = None
   date_time: datetime
   direction: str
+  unread_count: int = 0
