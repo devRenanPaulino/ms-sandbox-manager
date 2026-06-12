@@ -24,6 +24,6 @@ app.add_middleware(
 app.include_router(chat_router.router)
 
 # Rota básica de saúde do sistema (Health Check)
-@app.get("/")
+@app.get("/", methods=["GET", "HEAD"])
 def home():
     return {"status": "Backend rodando perfeitamente!"}
