@@ -1,4 +1,5 @@
 import os
+from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException, Form
 from app.core.database import get_database
 from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse, MessageTemplateRequest, ConversationPreviewResponse
@@ -85,10 +86,11 @@ def twilio_webhook(
     return ""
 
   
-@router.get("/history/{tel}", response_model=List[MessageResponse])
+@router.get("/history/{tel:path}", response_model=List[MessageResponse])
 def get_history(tel: str, skip: int = 0, limit: int = 20, repo: MongoChatRepository = Depends(get_repository)):
   try:
-    # Passa os parâmetros de paginação para o repositório
+    # unquote garante que %2B → + mesmo em casos de double-encoding pelo frontend
+    tel = unquote(tel)
     doc_db = repo.search_history_for_tel(tel, skip=skip, limit=limit)
 
     story_format = []
