@@ -7,7 +7,6 @@ class MessageCreateRequest(BaseModel):
   id_message_twilio: Optional[str] = None
   tel_client: str = Field(..., description="Telefone com +55 e DDD")
   text: Optional[str] = None
-  url_midia: Optional[str] = None
   id_colaborador: Optional[int] = None # nulo se for cliente mandando
 
 # Entidade de domínio
@@ -15,7 +14,6 @@ class MessageChat(BaseModel):
   id_message_twilio: str
   tel_client: str
   text: Optional[str] = None
-  url_midia: Optional[str] = None
   id_colaborador: Optional[int] = None
   direction: str # entrada ou saída
   date_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -27,7 +25,6 @@ class MessageResponse(BaseModel):
   id_message_twilio: str
   tel_client: str
   text: Optional[str] = None
-  url_midia: Optional[str] = None
   id_colaborador: Optional[int] = None
   direction: str
   date_time: datetime

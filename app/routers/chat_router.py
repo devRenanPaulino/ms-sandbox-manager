@@ -1,83 +1,53 @@
-import os
 from urllib.parse import unquote
-from fastapi import APIRouter, Depends, HTTPException, Form
+
+from fastapi import APIRouter, Depends, Form, HTTPException
+from pymongo.database import Database
+
+from app.core.config import settings
 from app.core.database import get_database
-from app.domain.models import MessageChat, MessageCreateRequest, MessageResponse, MessageTemplateRequest, ConversationPreviewResponse
+from app.domain.models import (
+  ConversationPreviewResponse,
+  MessageCreateRequest,
+  MessageResponse,
+  MessageTemplateRequest,
+)
+from app.gateways.base_gateway import INotificationGateway
+from app.gateways.twilio_gateway import get_twilio_gateway
 from app.repositories.mongo_repository import MongoChatRepository
-from datetime import datetime, timezone
+from app.services.chat_service import ChatService, NotificationGatewayError, NotificationGatewayUnavailableError
 from typing import List
-from twilio.rest import Client
 
 router = APIRouter(prefix="/chat", tags=["Chat de Conversa"])
 
-twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-twilio_number = os.getenv("TWILIO_NUMBER", "whatsapp:+14155238886")
 
-twilio_client = Client(twilio_sid, twilio_token) if twilio_sid and twilio_token else None
+def get_chat_service(
+  db: Database = Depends(get_database),
+  gateway: INotificationGateway = Depends(get_twilio_gateway),
+) -> ChatService:
+  repo = MongoChatRepository(db)
+  return ChatService(repo=repo, gateway=gateway, template_sid=settings.TWILIO_TEMPLATE_SID)
 
-def get_repository(db = Depends(get_database)) -> MongoChatRepository:
-  return MongoChatRepository(db)
 
 @router.post("/send", response_model=dict, status_code=201)
-def send_message(payload: MessageCreateRequest, repo: MongoChatRepository = Depends(get_repository)):
+def send_message(payload: MessageCreateRequest, service: ChatService = Depends(get_chat_service)):
   try:
-    id_twilio_final = f"SM_MOCK_{int(datetime.now(timezone.utc).timestamp())}"
-
-    if twilio_client:
-      try:
-        message_sent = twilio_client.messages.create(
-          from_=twilio_number,
-          body=payload.text,
-          to=f"whatsapp:{payload.tel_client}"
-        )
-        id_twilio_final = message_sent.sid
-        print(f"[Twilio] WhatsApp enviado para {payload.tel_client}. SID: {id_twilio_final}")
-      except Exception as twilio_err:
-        print(f"[Twilio] Erro no disparo (Mantenha a janela de 24h ativa): {twilio_err}")
-
-    new_message = MessageChat(
-      id_message_twilio=id_twilio_final,
-      tel_client=payload.tel_client,
-      text=payload.text,
-      url_midia=payload.url_midia,
-      id_colaborador=payload.id_colaborador,
-      direction="saida",
-      date_time=datetime.now(timezone.utc)
-    )
-
-    id_gen = repo.save_message(new_message)
-    return {"status": "Mensagem Enviada com sucesso", "id_db": id_gen, "id_twilio": id_twilio_final}
-  
+    return service.send_message(payload)
   except Exception as e:
     print("ERRO DETALHADO:", str(e))
     raise HTTPException(status_code=500, detail=str(e))
-  
+
+
 # Receber mensagens (POST para enviar dados novos de um servidor externo para a aplicação.)
 @router.post("/webhook", status_code=200)
 def twilio_webhook(
   Body: str = Form(...),
   From: str = Form(...),
   MessageSid: str = Form(...),
-  repo: MongoChatRepository = Depends(get_repository)
+  service: ChatService = Depends(get_chat_service),
 ):
   try:
-    clean_tel = From.replace("whatsapp:", "")
-
-    incoming_message = MessageChat(
-      id_message_twilio=MessageSid,
-      tel_client=clean_tel,
-      text=Body,
-      url_midia=None,
-      id_colaborador=None,
-      direction="entrada",
-      date_time=datetime.now(timezone.utc),
-      read=False
-    )
-
-    id_gen = repo.save_message(incoming_message)
-    print(f"[Webhook] Nova mensagem recebida de {clean_tel} salva no Atlas! ID: {id_gen}")
-
+    id_gen = service.receive_webhook_message(body=Body, from_=From, message_sid=MessageSid)
+    print(f"[Webhook] Nova mensagem recebida de {From} salva no Atlas! ID: {id_gen}")
     return ""
   except Exception as e:
     print("\nERRO DENTRO DO WEBHOOK")
@@ -85,103 +55,45 @@ def twilio_webhook(
     print("-----------------------------------------\n")
     return ""
 
-  
+
 @router.get("/history/{tel:path}", response_model=List[MessageResponse])
-def get_history(tel: str, skip: int = 0, limit: int = 20, repo: MongoChatRepository = Depends(get_repository)):
+def get_history(tel: str, skip: int = 0, limit: int = 20, service: ChatService = Depends(get_chat_service)):
   try:
     # unquote garante que %2B → + mesmo em casos de double-encoding pelo frontend
     tel = unquote(tel)
-    doc_db = repo.search_history_for_tel(tel, skip=skip, limit=limit)
-
-    story_format = []
-    for doc in doc_db:
-
-      dt = doc.get("date_time")
-      if isinstance(dt, datetime):
-      # Se o datetime não tiver fuso horário, injeta o UTC para o Pydantic aceitar feliz
-        if dt.tzinfo is None:
-          dt = dt.replace(tzinfo=timezone.utc)
-
-      filter_message = MessageResponse(
-        id_db=str(doc["_id"]),
-        id_message_twilio=doc.get("id_message_twilio"),
-        tel_client=doc.get("tel_client"),
-        text=doc.get("text"),
-        url_midia=doc.get("url_midia"),
-        id_colaborador=doc.get("id_colaborador"),
-        direction=doc.get("direction"),
-        date_time=dt
-      )
-      story_format.append(filter_message)
-
-    # Como o Mongo buscou do mais recente para o mais antigo por causa do sort decrescente,
-    # nós invertemos a lista final aqui para que o lote de 20 apareça na ordem correta do chat (de cima para baixo)
-    story_format.reverse()
-    return story_format
+    return service.get_history(tel, skip=skip, limit=limit)
   except Exception as e:
     raise HTTPException(status_code=500, detail=str(e))
-  
+
+
 @router.post("/initiate", response_model=dict, status_code=200)
-def initiate_conversation(payload: MessageTemplateRequest, repo: MongoChatRepository = Depends(get_repository)):
+def initiate_conversation(payload: MessageTemplateRequest, service: ChatService = Depends(get_chat_service)):
   try:
-    TEMPLATE_SID = "HXb5b62575e6e4ff6129ad7c8efe1f983e"
-    variables_json = f'{{"1":"{payload.param_1}","2":"{payload.param_2}"}}'
-    id_twilio_real = "TEMPLATE_TESTE_ID"
-
-    if twilio_client:
-      try:
-        message_sent = twilio_client.messages.create(
-          from_=twilio_number,
-          to=f"whatsapp:{payload.tel_client}",
-          content_sid=TEMPLATE_SID,    
-          content_variables=variables_json
-        )
-
-        id_twilio_real = message_sent.sid
-        print(f"[Template] Janela aberta com sucesso para {payload.tel_client}! SID: {id_twilio_real}")
-            
-      except Exception as twilio_err:
-        print(f"[Twilio] Erro ao disparar template: {twilio_err}")
-        raise HTTPException(status_code=400, detail=f"Erro na Twilio: {str(twilio_err)}")
-      
-      texto_renderizado = f"Your appointment is coming up on {payload.param_1} at {payload.param_2}"
-
-      new_message = MessageChat(
-        id_message_twilio=id_twilio_real,
-        tel_client=payload.tel_client,
-        text=texto_renderizado,
-        url_midia=None,
-        id_colaborador=payload.id_colaborador,
-        direction="saida",
-        date_time=datetime.now(timezone.utc)
-      )
-
-      id_gen = repo.save_message(new_message)
-
-      return {
-        "status": "Template enviado e janela de conversa aberta!",
-        "id_db": id_gen,
-        "id_twilio": id_twilio_real
-      }
+    return service.initiate_conversation(payload)
+  except NotificationGatewayUnavailableError as e:
+    raise HTTPException(status_code=503, detail=str(e))
+  except NotificationGatewayError as e:
+    raise HTTPException(status_code=400, detail=f"Erro na Twilio: {str(e)}")
   except Exception as e:
     print("ERRO NO POST INITIATE:", str(e))
     raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/conversations", response_model=List[ConversationPreviewResponse])
-def get_active_conversations(repo: MongoChatRepository = Depends(get_repository)):
-    try:
-        conversas = repo.get_distinct_conversations()
-        return conversas
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao buscar conversas ativas: {str(e)}")
-    
-@router.put("/read/{tel}", response_model=dict, status_code=200)
-def mark_as_read(tel: str, repo: MongoChatRepository = Depends(get_repository)):
+def get_active_conversations(service: ChatService = Depends(get_chat_service)):
   try:
-    modified_count = repo.mark_messages_as_read(tel)
+    return service.get_active_conversations()
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Erro ao buscar conversas ativas: {str(e)}")
+
+
+@router.put("/read/{tel}", response_model=dict, status_code=200)
+def mark_as_read(tel: str, service: ChatService = Depends(get_chat_service)):
+  try:
+    modified_count = service.mark_as_read(tel)
     return {
       "status": "Mensagens marcadas como lidas com sucesso",
-      "messagens_updated": modified_count
+      "messagens_updated": modified_count,
     }
   except Exception as e:
     raise HTTPException(status_code=500, detail=f"Erro ao atualizar status de leitura: {str(e)}")

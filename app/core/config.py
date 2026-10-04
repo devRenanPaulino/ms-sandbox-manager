@@ -7,4 +7,9 @@ class Settings:
   MONGO_URI: str = os.getenv("MONGO_URI")
   MONGO_DB_NAME: str = os.getenv("MONGO_DB_NAME", "db_raiz_do_bem")
 
+  TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID")
+  TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN")
+  TWILIO_NUMBER: str = os.getenv("TWILIO_NUMBER", "whatsapp:+14155238886")
+  TWILIO_TEMPLATE_SID: str = os.getenv("TWILIO_TEMPLATE_SID", "HXb5b62575e6e4ff6129ad7c8efe1f983e")
+
 settings = Settings()

@@ -8,8 +8,8 @@ class MongoChatRepository(IChatRepository):
     self.collection = db["stories_chats"]
 
   def save_message(self, message: MessageChat) -> str:
-    #.dict() transforma o objeto Pydantic em um dicionário estruturado (JSON)
-    data_dict = message.dict()
+    # model_dump() transforma o objeto Pydantic em um dicionário estruturado (JSON)
+    data_dict = message.model_dump()
     resultado = self.collection.insert_one(data_dict)
     # Retorna o ID gerado pelo MongoDB convertido em String
     return str(resultado.inserted_id)
