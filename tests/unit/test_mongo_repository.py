@@ -24,6 +24,11 @@ def make_message(tel="+5511999999999", direction="entrada", read=True, text="oi"
   )
 
 
+def seed(repo, **kwargs):
+  """Grava direto na coleção com horário fixo; save_message sempre usa o relógio do servidor."""
+  repo.collection.insert_one(make_message(**kwargs).model_dump())
+
+
 class TestSaveMessage:
   def test_returns_generated_id_and_persists_document(self, repo):
     id_gen = repo.save_message(make_message())
@@ -32,14 +37,28 @@ class TestSaveMessage:
     assert str(stored["_id"]) == id_gen
     assert stored["tel_client"] == "+5511999999999"
 
+  def test_stamps_date_time_with_the_database_clock_not_the_caller_clock(self, repo):
+    # Relógio local errado (ex.: 2001) não pode vazar para a conversa: vale a hora do servidor Mongo.
+    repo.save_message(make_message(when=datetime(2001, 1, 1, tzinfo=timezone.utc)))
+
+    stored = repo.collection.find_one()
+    assert stored["date_time"].year >= 2026
+
+  def test_messages_saved_in_sequence_keep_their_order(self, repo):
+    repo.save_message(make_message(text="primeira"))
+    repo.save_message(make_message(text="segunda"))
+
+    ordered = list(repo.collection.find().sort("date_time", 1))
+    assert [m["text"] for m in ordered] == ["primeira", "segunda"]
+
 
 class TestSearchHistoryForTel:
   def test_filters_by_phone_and_orders_newest_first(self, repo):
     older = datetime(2024, 1, 1, tzinfo=timezone.utc)
     newer = datetime(2024, 1, 2, tzinfo=timezone.utc)
-    repo.save_message(make_message(tel="+5511111111111", text="antiga", when=older))
-    repo.save_message(make_message(tel="+5511111111111", text="nova", when=newer))
-    repo.save_message(make_message(tel="+5522222222222", text="outro numero", when=newer))
+    seed(repo, tel="+5511111111111", text="antiga", when=older)
+    seed(repo, tel="+5511111111111", text="nova", when=newer)
+    seed(repo, tel="+5522222222222", text="outro numero", when=newer)
 
     result = repo.search_history_for_tel("+5511111111111")
 
@@ -47,7 +66,7 @@ class TestSearchHistoryForTel:
 
   def test_respects_skip_and_limit(self, repo):
     for i in range(5):
-      repo.save_message(make_message(tel="+5511111111111", text=f"msg{i}", when=datetime(2024, 1, i + 1, tzinfo=timezone.utc)))
+      seed(repo, tel="+5511111111111", text=f"msg{i}", when=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
 
     page = repo.search_history_for_tel("+5511111111111", skip=1, limit=2)
 
@@ -56,12 +75,12 @@ class TestSearchHistoryForTel:
 
 class TestGetDistinctConversations:
   def test_returns_last_message_and_unread_count_per_phone(self, repo):
-    repo.save_message(make_message(tel="+5511111111111", direction="entrada", read=False, text="primeira",
-                                    when=datetime(2024, 1, 1, tzinfo=timezone.utc)))
-    repo.save_message(make_message(tel="+5511111111111", direction="entrada", read=False, text="ultima",
-                                    when=datetime(2024, 1, 2, tzinfo=timezone.utc)))
-    repo.save_message(make_message(tel="+5522222222222", direction="saida", read=True, text="oferta",
-                                    when=datetime(2024, 1, 1, tzinfo=timezone.utc)))
+    seed(repo, tel="+5511111111111", direction="entrada", read=False, text="primeira",
+                                    when=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    seed(repo, tel="+5511111111111", direction="entrada", read=False, text="ultima",
+                                    when=datetime(2024, 1, 2, tzinfo=timezone.utc))
+    seed(repo, tel="+5522222222222", direction="saida", read=True, text="oferta",
+                                    when=datetime(2024, 1, 1, tzinfo=timezone.utc))
 
     conversations = {c["tel_client"]: c for c in repo.get_distinct_conversations()}
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from app.routers import chat_router
+from app.routers import chat_router, summary_router
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
@@ -40,6 +40,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(chat_router.router)
+app.include_router(summary_router.router)
 
 
 # Rota básica de saúde do sistema (Health Check)

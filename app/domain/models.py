@@ -42,3 +42,11 @@ class ConversationPreviewResponse(BaseModel):
   date_time: datetime
   direction: str
   unread_count: int = 0
+
+# Resumo estruturado gerado pela IA para o transbordo de atendimento
+class ChatSummaryResponse(BaseModel):
+  tel_client: str
+  necessidade_principal: str
+  status_atual: str
+  proximos_passos: str
+  messages_used: int
