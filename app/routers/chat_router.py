@@ -5,6 +5,7 @@ from pymongo.database import Database
 
 from app.core.config import settings
 from app.core.database import get_database
+from app.core.security import require_auth, validar_assinatura_twilio
 from app.domain.models import (
   ConversationPreviewResponse,
   MessageCreateRequest,
@@ -28,7 +29,7 @@ def get_chat_service(
   return ChatService(repo=repo, gateway=gateway, template_sid=settings.TWILIO_TEMPLATE_SID)
 
 
-@router.post("/send", response_model=dict, status_code=201)
+@router.post("/send", response_model=dict, status_code=201, dependencies=[Depends(require_auth)])
 def send_message(payload: MessageCreateRequest, service: ChatService = Depends(get_chat_service)):
   try:
     return service.send_message(payload)
@@ -38,7 +39,7 @@ def send_message(payload: MessageCreateRequest, service: ChatService = Depends(g
 
 
 # Receber mensagens (POST para enviar dados novos de um servidor externo para a aplicação.)
-@router.post("/webhook", status_code=200)
+@router.post("/webhook", status_code=200, dependencies=[Depends(validar_assinatura_twilio)])
 def twilio_webhook(
   Body: str = Form(...),
   From: str = Form(...),
@@ -56,7 +57,7 @@ def twilio_webhook(
     return ""
 
 
-@router.get("/history/{tel:path}", response_model=List[MessageResponse])
+@router.get("/history/{tel:path}", response_model=List[MessageResponse], dependencies=[Depends(require_auth)])
 def get_history(tel: str, skip: int = 0, limit: int = 20, service: ChatService = Depends(get_chat_service)):
   try:
     # unquote garante que %2B → + mesmo em casos de double-encoding pelo frontend
@@ -66,7 +67,7 @@ def get_history(tel: str, skip: int = 0, limit: int = 20, service: ChatService =
     raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/initiate", response_model=dict, status_code=200)
+@router.post("/initiate", response_model=dict, status_code=200, dependencies=[Depends(require_auth)])
 def initiate_conversation(payload: MessageTemplateRequest, service: ChatService = Depends(get_chat_service)):
   try:
     return service.initiate_conversation(payload)
@@ -79,7 +80,7 @@ def initiate_conversation(payload: MessageTemplateRequest, service: ChatService 
     raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/conversations", response_model=List[ConversationPreviewResponse])
+@router.get("/conversations", response_model=List[ConversationPreviewResponse], dependencies=[Depends(require_auth)])
 def get_active_conversations(service: ChatService = Depends(get_chat_service)):
   try:
     return service.get_active_conversations()
@@ -87,7 +88,7 @@ def get_active_conversations(service: ChatService = Depends(get_chat_service)):
     raise HTTPException(status_code=500, detail=f"Erro ao buscar conversas ativas: {str(e)}")
 
 
-@router.put("/read/{tel}", response_model=dict, status_code=200)
+@router.put("/read/{tel}", response_model=dict, status_code=200, dependencies=[Depends(require_auth)])
 def mark_as_read(tel: str, service: ChatService = Depends(get_chat_service)):
   try:
     modified_count = service.mark_as_read(tel)
