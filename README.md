@@ -34,6 +34,8 @@ Este é um **microserviço de comunicação** desenvolvido para a ONG **Raiz do 
 
 ## Arquitetura
 
+> Visão completa, com fluxos, modelo de dados e limitações conhecidas, em [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 A aplicação segue os princípios de **Clean Architecture** com separação clara de responsabilidades em camadas:
 
 ```

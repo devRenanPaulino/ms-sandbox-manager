@@ -1,5 +1,6 @@
 from app.repositories.base_repository import IChatRepository
 from app.domain.models import MessageChat
+from bson import ObjectId
 from pymongo.database import Database
 from typing import List
 
@@ -10,9 +11,19 @@ class MongoChatRepository(IChatRepository):
   def save_message(self, message: MessageChat) -> str:
     # model_dump() transforma o objeto Pydantic em um dicionário estruturado (JSON)
     data_dict = message.model_dump()
-    resultado = self.collection.insert_one(data_dict)
-    # Retorna o ID gerado pelo MongoDB convertido em String
-    return str(resultado.inserted_id)
+    # O horário vem do relógio do servidor MongoDB, não da máquina que processa a requisição:
+    # envio (API local) e webhook (outro servidor) rodam em processos com relógios diferentes, e
+    # qualquer defasagem entre eles inverte a ordem da conversa. Sem isso, um relógio 45 s
+    # atrasado faz a resposta aparecer acima da mensagem do cliente.
+    data_dict.pop("date_time", None)
+    message_id = ObjectId()
+    self.collection.update_one(
+      {"_id": message_id},
+      {"$set": data_dict, "$currentDate": {"date_time": True}},
+      upsert=True,
+    )
+    # Retorna o ID gerado convertido em String
+    return str(message_id)
   
   def search_history_for_tel(self, tel: str, skip: int = 0, limit: int = 20) -> List[dict]:
     """Busca o histórico paginado de um telefone, trazendo as mais recentes primeiro."""
