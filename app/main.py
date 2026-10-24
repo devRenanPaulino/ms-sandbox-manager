@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.routers import chat_router, summary_router
+from app.core.database import client as mongo_client
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
@@ -41,6 +42,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(chat_router.router)
 app.include_router(summary_router.router)
+
+
+# Health check para monitores de uptime (UptimeRobot etc.) e para manter o Render acordado.
+# Aceita HEAD porque muitos monitores gratuitos testam com HEAD. Sem autenticação e sem expor
+# detalhes internos: só diz se o serviço e o banco respondem.
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
+def health():
+    try:
+        mongo_client.admin.command("ping")
+    except Exception as e:
+        print(f"[Health] MongoDB indisponível: {e}")
+        return JSONResponse(status_code=503, content={"status": "degraded", "mongodb": "down"})
+    return {"status": "ok", "mongodb": "up"}
 
 
 # Rota básica de saúde do sistema (Health Check)
